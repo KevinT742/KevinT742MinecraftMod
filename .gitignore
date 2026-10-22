@@ -53,3 +53,6 @@ verification/logs/
 
 ### 游戏与工具产生的日志 ###
 logs/
+
+### javac 命令行过长时自动落盘的参数文件 ###
+verification/javac.*.args

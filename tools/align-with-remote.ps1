@@ -96,8 +96,10 @@ foreach ($member in $targets) {
         continue
     }
 
-    # 用远端的元数据在本地把那个提交原样重建出来
-    $parent = (git -C $worktree rev-parse 'HEAD^').Trim()
+    # 用远端的元数据在本地把那个提交原样重建出来。
+    # 注意父提交要取**远端那个提交的父**，不是本地 HEAD^ —— API 造出来的提交
+    # 挂在远端原来的头上，和本地的父链不是一回事。
+    $parent = $commit.parents[0].sha
     $message = $commit.commit.message
     $authorDate = $commit.commit.author.date
     $committerDate = $commit.commit.committer.date

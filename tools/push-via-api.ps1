@@ -85,6 +85,23 @@ function Invoke-GhApi {
     return ($text | ConvertFrom-Json)
 }
 
+# 把提交里的一个 blob 按字节取出来。走 .NET 的原始流，不能经过 PowerShell 的
+# 文本管道 —— 那会把 LF 重新折成 CRLF，取到的就不是提交里的内容了。
+function Get-BlobBytes([string] $repo, [string] $sha, [string] $outFile) {
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = 'git'
+    $psi.Arguments = "-C `"$repo`" cat-file blob $sha"
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $process = [System.Diagnostics.Process]::Start($psi)
+    $stream = [System.IO.File]::Create($outFile)
+    $process.StandardOutput.BaseStream.CopyTo($stream)
+    $stream.Close()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) { throw "取不到 blob $sha" }
+}
+
 # ---------------------------------------------------------------------------
 # 1. 确定要推的仓库
 # ---------------------------------------------------------------------------
@@ -144,39 +161,58 @@ foreach ($member in $targets) {
     $baseTree = $baseCommit.tree.sha
 
     # 2.2 取改动清单（远端 -> 本地）
+    #     不能用 `git diff 远端..本地`：远端那个提交是 API 造的，本地根本没有它，
+    #     diff 会失败，而失败会被当成"没有差异"，于是静默漏推。
+    #     所以改成把两边的树都列出来，逐个路径比 blob。
+    $remoteTree = Invoke-GhApi -Method GET -Path "/repos/$Owner/$repoName/git/trees/$baseTree?recursive=1"
+    $remoteBlobs = @{}
+    foreach ($entry in $remoteTree.tree) {
+        if ($entry.type -eq 'blob') { $remoteBlobs[$entry.path] = $entry.sha }
+    }
+    $localBlobs = @{}
+    foreach ($line in (git -C $worktree ls-tree -r $headSha)) {
+        $parts = $line -split '\s+', 4
+        if ($parts.Count -ge 4) { $localBlobs[$parts[3]] = $parts[2] }
+    }
+
     $changes = @()
-    foreach ($line in (git -C $worktree diff --name-status "$remoteSha..$headSha" 2>$null)) {
-        if (-not $line.Trim()) { continue }
-        $parts = $line -split "`t"
-        $changes += [pscustomobject]@{ Status = $parts[0].Substring(0, 1); Path = $parts[1] }
+    foreach ($path in $localBlobs.Keys) {
+        if (-not $remoteBlobs.ContainsKey($path)) {
+            $changes += [pscustomobject]@{ Status = 'A'; Path = $path }
+        } elseif ($remoteBlobs[$path] -ne $localBlobs[$path]) {
+            $changes += [pscustomobject]@{ Status = 'M'; Path = $path }
+        }
+    }
+    foreach ($path in $remoteBlobs.Keys) {
+        if (-not $localBlobs.ContainsKey($path)) {
+            $changes += [pscustomobject]@{ Status = 'D'; Path = $path }
+        }
     }
     if ($changes.Count -eq 0) {
         Write-Host '   没有内容差异，跳过'
         continue
     }
+    Write-Host "   改动 $($changes.Count) 个文件"
 
     # 2.3 每个文件造一个 blob
     $treeEntries = @()
     foreach ($change in $changes) {
-        $full = Join-Path $worktree ($change.Path -replace '/', '\')
         if ($change.Status -eq 'D') {
             Write-Host "   删除 $($change.Path)"
             $treeEntries += @{ path = $change.Path; mode = '100644'; type = 'blob'; sha = $null }
             continue
         }
         # ⚠️ 必须推**提交里的 blob**，不能直接读工作区文件。
-        #    工作区文件可能是 CRLF，而 git 按 .gitattributes 规范化后的 blob 是 LF；
+        #    工作区文件可能是 CRLF（这台机器的 core.autocrlf 是系统级 true），
+        #    而提交里的 blob 是按 .gitattributes 规范化过的 LF。
         #    直接读工作区会把 CRLF 传上去，远端 blob 与本地对不上，
         #    还会让 .gitattributes 的规则形同虚设。
+        #    这里用 git cat-file 把提交里的那个 blob 原样取出来（按字节复制，
+        #    不经过 PowerShell 的文本管道 —— 那会把 LF 重新折成 CRLF）。
         $expected = (& git -C $worktree rev-parse "$headSha`:$($change.Path)").Trim()
-        $raw = [System.IO.File]::ReadAllBytes($full)
         $probe = Join-Path ([System.IO.Path]::GetTempPath()) ("blob-" + [guid]::NewGuid().ToString('N'))
-        [System.IO.File]::WriteAllBytes($probe, $raw)
-        $actual = (& git hash-object --no-filters $probe).Trim()
-        if ($actual -ne $expected) {
-            Write-Host "   跳过 $($change.Path) ：工作区内容与提交里的 blob 不一致（行尾/编码差异），需先 git add --renormalize"
-            continue
-        }
+        Get-BlobBytes $worktree $expected $probe
+        $raw = [System.IO.File]::ReadAllBytes($probe)
         $blob = Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/blobs" -Body @{
             content = [Convert]::ToBase64String($raw)
             encoding = 'base64'
