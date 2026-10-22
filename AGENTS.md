@@ -94,11 +94,29 @@ pwsh -File tools\push-via-api.ps1              # 推所有成员 + 装配层
 pwsh -File tools\push-via-api.ps1 -Repos base   # 只推 base
 ```
 
-它的已知限制：
+它的已知限制与要点：
 
-* 推的是**提交里的 blob**，不是工作区文件 —— 否则工作区的 CRLF 会被传上去，
-  与 `.gitattributes` 的规则冲突（脚本会用 `git hash-object` 校验，不一致就跳过）。
-* 重建的提交 **SHA 与本地不同**，推完要 `git fetch origin && git reset --hard origin/main` 对齐。
+* 推的是**提交里的 blob**（用 `git cat-file` 按字节取），不是工作区文件 ——
+  否则工作区的 CRLF 会被传上去，与 `.gitattributes` 的规则冲突。
+* 改动清单是把两边的树列出来**逐路径比 blob**得出的 —— 不能用
+  `git diff 远端..本地`：远端那个提交是 API 造的，本地根本没有它，
+  diff 会失败，而失败会被当成"没有差异"，于是**静默漏推**。
+* 重建的提交 **SHA 与本地不同**（作者/时间不同），推完要用
+  `tools/align-with-remote.ps1` 对齐：
+
+```powershell
+pwsh -File tools\align-with-remote.ps1          # 对齐所有成员
+```
+
+  它不去 `git fetch`（那条路同样不稳），而是走 API 把远端提交的元数据读回来，
+  在本地用 `commit-tree` 把那条提交链原样重建出来 —— 同样的树、同样的父提交、
+  同样的作者与时间、同样的说明，于是 SHA 也一样。
+
+  重建时有三个坑，脚本里都标了出来：
+  `git mktree` 从**标准输入**读条目（不是文件参数）；
+  API 报的 `message` **少了结尾的换行**（要补回去）；
+  `ConvertFrom-Json` 会把日期串转成 DateTime 对象而**丢掉时区**
+  （要用 `-DateKind String`）。
 
 ### 验证的两条路，各管各的
 
