@@ -38,3 +38,7 @@ jobs:
       # 只跑 build 是不够的 —— build 只证明能编译，不证明算法还对。
       - name: Self test
         run: ./gradlew :base:selfTest
+
+      # 持久化自检：证明一个仪式在服务器重启之后还在。
+      - name: Persistence test
+        run: ./gradlew :base:persistenceTest

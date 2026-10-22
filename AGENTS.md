@@ -204,13 +204,17 @@ dev/    自检程序 —— 不启动游戏即可验证算法
 
 base 目前**尚未**接入玩法的地方（README 第七节"已知限制"同样列了）：
 
-* 魔力浓度只有 F3 调试字符串这一个绑定点（`GenesisChunkGenerator.addDebugScreenInfo`）
+* 魔力浓度对玩家的绑定点仍然只有 F3 调试字符串（`GenesisChunkGenerator.addDebugScreenInfo`，
+  它显示的是由种子推出的**分布**，不含被施加过的影响）
 * 魔力器官与引导方式是**描述性数据**（类型 + 数值），未接实体与合成表
 * 星球的重力 / 天空 / 云 / 天气是参数化预留，未驱动客户端渲染
 * 生成器 `fillFromNoise` 用高度图式填充，洞穴由独立 3D 噪声雕刻
 * 结构是程序化简化建筑，未接原版结构模板系统
 
-> `MagicField` 目前是**内存态**：实例挂在 `GenesisChunkGenerator.Models` 内部的
-> `CopyOnWriteArrayList` 上，没有 dimension 作用域，不写 NBT，
-> `influence()` 的结果**服务器重启即丢**。要做仪式 / 献祭类玩法，先把它改成
-> dimension 级 + 可持久化。
+> **魔力场已经是持久化的**（2026-10-22）：`MagicField` 的影响列表由
+> `mc/magic/GenesisMagicData`（一个 `SavedData`）持有，**每个维度一份**，写 NBT。
+> 入口是 `mc/GenesisApi`——兄弟模组一律走它，不要伸进 base 的内部结构。
+>
+> 注意 `SavedDataType` 的第四个参数（data fix type）传的是 `null`：这是我们自己的数据，
+> 没有原版 datafixer 认识它，NeoForge 支持 null 表示跳过修复。**不要**随便改成某个
+> `DataFixTypes.SAVED_DATA_*`，那会让原版的修复器跑在我们的数据上。

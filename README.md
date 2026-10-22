@@ -64,12 +64,18 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
 |---|---|---|---|
 | `base/` | [Genesis](base/README.md) | `genesis` | **地基**：统一材质模板（物理/化学/魔法）、物品注册信息、魔法模型（游离魔力·浓度场·器官·材料·引导方式）、真实世界生成、结构体系、多星球架构 |
 
-`base` 对外提供 `api/`（稳定扩展面）与 `core/`（纯算法层）两套契约，家族成员可以直接依赖：
+`base` 对外提供 `api/`（稳定扩展面）与 `core/`（纯算法层）两套契约，家族成员可以直接依赖。
+进入基地能力的统一入口是 `genesis.mc.GenesisApi`：
 
-```groovy
+```java
 dependencies {
     implementation project(':base')
 }
+```
+
+```java
+Optional<MagicField> field = GenesisApi.magicField(serverLevel);
+field.ifPresent(f -> f.influence(x, z, 128.0, -0.6));   // 魔力场是持久化的
 ```
 
 ---
@@ -142,6 +148,10 @@ dependencies {
 
 9. 需要复用基地能力时，在依赖里加 `implementation project(':base')`，
    并在自己的 `neoforge.mods.toml` 里声明对 `genesis` 的依赖。
+
+   复用基地能力的入口是 **`genesis.mc.GenesisApi`**：它给出一个维度的**魔力场**
+   （持久化，重启不丢）、**星球**、某方块的**材质档案**，以及该位置的**浓度**与**强度**。
+   一律走它，不要伸进 Genesis 的内部结构——内部结构会变，facade 不会。
 
 10. 离线验证脚本默认校验 `base`；要校验新成员，用环境变量指定子工程目录名即可：
 
