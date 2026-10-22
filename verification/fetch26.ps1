@@ -7,18 +7,18 @@ New-Item -ItemType Directory -Path $script:Libs -Force | Out-Null
 
 function Fetch($url, $out) {
     if (Test-Path -LiteralPath $out) { Write-Host "  cached: $(Split-Path -Leaf $out)"; return }
-    curl.exe -sS -f --max-time 600 --noproxy '*' -o $out $url
+    & $script:Curl -sS -f --max-time 600 --noproxy '*' -o $out $url
     if (-not (Test-Path -LiteralPath $out)) { throw "download failed: $url" }
 }
 
 Write-Host "[1/4] version manifest..."
-$vm = (curl.exe -s --max-time 60 --noproxy '*' 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json' | Out-String) | ConvertFrom-Json
+$vm = (& $script:Curl -s --max-time 60 --noproxy '*' 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json' | Out-String) | ConvertFrom-Json
 
 $v = $vm.versions | Where-Object { $_.id -eq $version } | Select-Object -First 1
 if (-not $v) { throw "version $version not found" }
 
 Write-Host "[2/4] $version metadata..."
-$vj = (curl.exe -s --max-time 60 --noproxy '*' $v.url | Out-String) | ConvertFrom-Json
+$vj = (& $script:Curl -s --max-time 60 --noproxy '*' $v.url | Out-String) | ConvertFrom-Json
 $vj | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $script:Work "version-$version.json") -Encoding utf8
 Write-Host "  javaVersion: $($vj.javaVersion.majorVersion)  libs: $(@($vj.libraries).Count)"
 

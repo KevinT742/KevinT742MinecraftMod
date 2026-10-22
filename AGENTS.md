@@ -100,6 +100,21 @@ pwsh -File tools\push-via-api.ps1 -Repos base   # 只推 base
   与 `.gitattributes` 的规则冲突（脚本会用 `git hash-object` 校验，不一致就跳过）。
 * 重建的提交 **SHA 与本地不同**，推完要 `git fetch origin && git reset --hard origin/main` 对齐。
 
+### 验证的两条路，各管各的
+
+| 路 | 跑什么 | 能证明什么 | 不能证明什么 |
+|---|---|---|---|
+| **Gradle**（`./gradlew build` / `:base:selfTest`） | 真实 NeoForge | 代码**对真实 NeoForge 编译得过**、自检跑得起来 | 碰不到游戏注册表 |
+| **离线工具链**（`verification/`） | 真实 Minecraft + NeoForge 桩件 | 算法、材质、存档格式**逐条断言** | 证明不了桩件以外的行为 |
+
+**为什么要两条**：游戏注册表在游戏启动之前是不可用的。真实 NeoForge 在类路径上时，
+连 `SharedConstants` 的静态初始化都要向模组加载器要东西（`FMLLoader.getCurrent()`），
+所以独立进程走不到注册表 —— **材质自检（遍历全部方块与物品）只能在离线工具链里跑**，
+没有对应的 Gradle 任务。CI 两条路都跑。
+
+离线工具链是**跨平台**的（JDK 从 `JAVA_HOME` / `MC_JAVA_HOME` 里挑一个够新的，
+类路径分隔符按平台取），所以本地和 CI 跑的是同一套脚本。
+
 ### 桩件铁律：必须与真实 NeoForge 源码逐个签名对齐
 
 `verification/stubs/` 是**手写的最小桩件**，用来在够不到 `maven.neoforged.net` 的机器上

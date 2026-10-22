@@ -23,7 +23,8 @@ function ExpandJar($jar, $to) {
     $z = [System.IO.Compression.ZipFile]::OpenRead($jar)
     foreach ($e in $z.Entries) {
         if ($e.Length -eq 0) { continue }
-        $dest = Join-Path $to ($e.FullName -replace '/', '\')
+        # The forward slash works on every platform, the backslash only on Windows.
+        $dest = Join-Path $to $e.FullName
         $dir = Split-Path -Parent $dest
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         try { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $dest, $true) } catch { }
