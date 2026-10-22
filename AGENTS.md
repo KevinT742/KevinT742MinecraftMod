@@ -62,6 +62,36 @@ KevinT742MinecraftMod/           ← 装配层仓库（.git 在此）
 
 ## 二、构建与验证约定
 
+### 推送：git 传输层在这台机器上不稳
+
+`github.com` 的 git 端点（git-upload-pack）**直连不通**，经 SOCKS5 代理
+`127.0.0.1:10808` 能通但**很慢**（一次 `ls-remote` 可能要几十秒到 120 秒）；
+而 `api.github.com` **直连稳定**。
+
+因此本机 git 需要配代理：
+
+```
+git config --global http.proxy  socks5h://127.0.0.1:10808
+git config --global https.proxy socks5h://127.0.0.1:10808
+git config --global http.sslBackend openssl
+```
+
+（schannel 后端会出现 `server closed abruptly (missing close_notify)`。）
+
+**推不动时的兜底**：`tools/push-via-api.ps1` 走 GitHub 的 Git Data API
+（blob / tree / commit / ref），只依赖直连可达的 `api.github.com`：
+
+```powershell
+pwsh -File tools\push-via-api.ps1              # 推所有成员 + 装配层
+pwsh -File tools\push-via-api.ps1 -Repos base   # 只推 base
+```
+
+它的已知限制：
+
+* 推的是**提交里的 blob**，不是工作区文件 —— 否则工作区的 CRLF 会被传上去，
+  与 `.gitattributes` 的规则冲突（脚本会用 `git hash-object` 校验，不一致就跳过）。
+* 重建的提交 **SHA 与本地不同**，推完要 `git fetch origin && git reset --hard origin/main` 对齐。
+
 ### 桩件铁律：必须与真实 NeoForge 源码逐个签名对齐
 
 `verification/stubs/` 是**手写的最小桩件**，用来在够不到 `maven.neoforged.net` 的机器上

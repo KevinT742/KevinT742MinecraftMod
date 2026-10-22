@@ -164,12 +164,24 @@ foreach ($member in $targets) {
             $treeEntries += @{ path = $change.Path; mode = '100644'; type = 'blob'; sha = $null }
             continue
         }
-        $bytes = [System.IO.File]::ReadAllBytes($full)
+        # ⚠️ 必须推**提交里的 blob**，不能直接读工作区文件。
+        #    工作区文件可能是 CRLF，而 git 按 .gitattributes 规范化后的 blob 是 LF；
+        #    直接读工作区会把 CRLF 传上去，远端 blob 与本地对不上，
+        #    还会让 .gitattributes 的规则形同虚设。
+        $expected = (& git -C $worktree rev-parse "$headSha`:$($change.Path)").Trim()
+        $raw = [System.IO.File]::ReadAllBytes($full)
+        $probe = Join-Path ([System.IO.Path]::GetTempPath()) ("blob-" + [guid]::NewGuid().ToString('N'))
+        [System.IO.File]::WriteAllBytes($probe, $raw)
+        $actual = (& git hash-object --no-filters $probe).Trim()
+        if ($actual -ne $expected) {
+            Write-Host "   跳过 $($change.Path) ：工作区内容与提交里的 blob 不一致（行尾/编码差异），需先 git add --renormalize"
+            continue
+        }
         $blob = Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/blobs" -Body @{
-            content = [Convert]::ToBase64String($bytes)
+            content = [Convert]::ToBase64String($raw)
             encoding = 'base64'
         }
-        Write-Host "   写入 $($change.Path)  ($($bytes.Length) 字节, blob $($blob.sha.Substring(0,7)))"
+        Write-Host "   写入 $($change.Path)  ($($raw.Length) 字节, blob $($blob.sha.Substring(0,7)))"
         $treeEntries += @{ path = $change.Path; mode = '100644'; type = 'blob'; sha = $blob.sha }
     }
 
