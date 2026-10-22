@@ -42,3 +42,7 @@ jobs:
       # 持久化自检：证明一个仪式在服务器重启之后还在。
       - name: Persistence test
         run: ./gradlew :base:persistenceTest
+
+      # 探针的自检：证明一个兄弟模组只用 Genesis 的契约就能站住。
+      - name: Sandbox self test
+        run: ./gradlew :sandbox:selfTest

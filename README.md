@@ -25,13 +25,23 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
 ├── AGENTS.md                   ← 项目约定（改动前先读）
 ├── TEMPLATE_LICENSE.txt
 │
-└── base/                       ← ★ 家族成员①：Genesis（地基）
-    │                           ←   ★ 独立 git 仓库（base/.git）
-    ├── build.gradle            ←   该成员的构建脚本
+├── base/                       ← ★ 家族成员①：Genesis（地基）
+│   │                           ←   ★ 独立 git 仓库（base/.git）
+│   ├── build.gradle            ←   该成员的构建脚本
+│   ├── gradle.properties       ←   该成员自己的属性
+│   ├── README.md               ←   该成员的详细文档
+│   └── src/main/
+│       ├── java/genesis/
+│       ├── resources/
+│       └── templates/
+│
+└── sandbox/                    ← ★ 家族成员②：Sandbox（探针）
+    │                           ←   ★ 独立 git 仓库（sandbox/.git）
+    ├── build.gradle            ←   依赖 base 的最小成员
     ├── gradle.properties       ←   该成员自己的属性
     ├── README.md               ←   该成员的详细文档
     └── src/main/
-        ├── java/genesis/
+        ├── java/sandbox/
         ├── resources/
         └── templates/
 ```
@@ -42,11 +52,11 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
 母文件夹则是**装配层**，只保存家族共享的脚手架。
 
 ```
-本仓库（装配层）                 base（独立仓库）
+本仓库（装配层）                 base / sandbox（各自的独立仓库）
 ├─ settings.gradle              ├─ build.gradle
 ├─ build.gradle                 ├─ gradle.properties
 ├─ gradle.properties            └─ src/
-├─ members.lock  ← 记录 base 该用哪个 ref
+├─ members.lock  ← 记录每个成员该用哪个 ref
 └─ .github/workflows/ ← CI 按 members.lock 装配成员
 ```
 
@@ -56,6 +66,9 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
 * **成员之间靠 `members.lock` 锁版本**：成员之间会通过 `implementation project(':base')`
   互相依赖，一套能跑通的家族 = 本仓库的某个 commit + `members.lock` 里的一组 ref。
 
+**`members.lock` 的顺序就是依赖顺序**：靠前的成员先编译，靠后的成员编译时，
+类路径里已经有靠前成员的类。离线验证脚本也按这个顺序装配全族。
+
 ---
 
 ## 二、家族成员
@@ -63,6 +76,7 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
 | 子工程 | 模组 | mod id | 定位 |
 |---|---|---|---|
 | `base/` | [Genesis](base/README.md) | `genesis` | **地基**：统一材质模板（物理/化学/魔法）、物品注册信息、魔法模型（游离魔力·浓度场·器官·材料·引导方式）、真实世界生成、结构体系、多星球架构 |
+| `sandbox/` | [Sandbox](sandbox/README.md) | `sandbox` | **探针**：最小的兄弟模组，只靠 `implementation project(':base')` 就能用上 Genesis 的契约。它证明"再开一个模组真的只是照抄一个目录的事" |
 
 `base` 对外提供 `api/`（稳定扩展面）与 `core/`（纯算法层）两套契约，家族成员可以直接依赖。
 进入基地能力的统一入口是 `genesis.mc.GenesisApi`：
@@ -130,6 +144,10 @@ field.ifPresent(f -> f.influence(x, z, 128.0, -0.6));   // 魔力场是持久化
 5. 新建 `新成员名/` 目录并**单独 `git init`**，把它变成独立仓库。
    成员仓库只放自己的东西：`build.gradle`、`gradle.properties`、`src/`、`README.md`、
    以及一份自己的 `.gitignore` 和 `.gitattributes`（根仓库的规则管不到独立仓库）。
+
+   > **直接照抄 `sandbox/`。** 它是家族里最小的一个成员，已经把
+   > `implementation project(':base')`、moddev 的模组依赖写法、
+   > 用 Genesis 的模板注册方块与物品、以及一个自检全都演示了一遍。
 
 6. 复制 `base/build.gradle` 作为模板，删掉与 Genesis 无关的部分（`genesis/dev/**` 排除规则、`selfTest` 任务等）。
 

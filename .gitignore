@@ -46,6 +46,7 @@ verification/work/
 # 每个子模组自带 .git，母文件夹不吞掉它们的源码。
 # 新增成员时在此追加一行：/成员名/
 /base/
+/sandbox/
 
 ### 工具产生的日志 ###
 verification/logs/

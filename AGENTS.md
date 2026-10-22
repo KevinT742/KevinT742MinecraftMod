@@ -14,7 +14,7 @@
 
 ```
 KevinT742MinecraftMod/           ← 装配层仓库（.git 在此）
-├── settings.gradle               ← 成员清单：include 'base'
+├── settings.gradle               ← 成员清单：include 'base' 'sandbox'
 ├── build.gradle                  ← 共享插件版本 + 家族约定（Java 工具链 / 编码）
 ├── gradle.properties             ← 共享版本：minecraft_version / neo_version
 ├── gradlew / gradlew.bat / gradle/
@@ -22,12 +22,20 @@ KevinT742MinecraftMod/           ← 装配层仓库（.git 在此）
 ├── .github/workflows/            ← CI：装配成员 → 编译 → 自检
 ├── members.lock                  ← 成员版本锁定（记录各成员仓库该用哪个 ref）
 │
-├── base/                         ← ★ 独立仓库（base/.git）
+├── base/                         ← ★ 独立仓库（base/.git）：Genesis
 │   ├── build.gradle
 │   ├── gradle.properties
 │   └── src/
-└── <新成员>/                      ← ★ 独立仓库（<新成员>/.git）
+│
+└── sandbox/                      ← ★ 独立仓库（sandbox/.git）：探针
+    ├── build.gradle              ←   依赖 base 的最小成员
+    ├── gradle.properties
+    └── src/
 ```
+
+> **`members.lock` 的顺序就是依赖顺序**：靠前的成员先编译，靠后的成员编译时，
+> 类路径里已经有靠前成员的类。离线验证脚本与 CI 都按这个顺序装配全族。
+> 新增成员时把它放在它依赖的成员**后面**。
 
 ### 由此推出的硬性规则
 
@@ -174,6 +182,33 @@ dev/    自检程序 —— 不启动游戏即可验证算法
 * 需要碰 Minecraft 类 → `mc`
 
 `core` 层不得 import 任何 `net.minecraft.*` / `net.neoforged.*`。
+
+### 自检的两个目录，别搞混
+
+* `<成员根包>/dev/`（如 `genesis/dev/`、`sandbox/dev/`）—— 自检用**窄类路径**编译：
+  类路径里只有各成员的类，**没有游戏**。这机械地证明了 `api` / `core` 层不依赖 Minecraft。
+  想给某个 api 加一个 `com.mojang.serialization` 的依赖？窄类路径会立刻拦住你。
+* 更深的 `dev/` 包（如 `genesis/mc/dev/`）—— 自检需要游戏的 NBT 之类的机制，
+  用**完整类路径**编译。
+
+**注意**：`api` 层连 `com.mojang.serialization` 都要避开。序列化格式属于 mc 层
+（`mc/magic/MagicInfluenceCodec.java`），因为写文件的是 mc 层。
+
+### 兄弟模组怎么进基地
+
+**一律走 `genesis.mc.GenesisApi`**，不要伸进 base 的内部结构。facade 给出的东西：
+
+| 要什么 | 拿它 |
+|---|---|
+| 某维度的魔力场（**持久化**，重启不丢） | `GenesisApi.magicField(level)` |
+| 某位置的浓度 / 强度 | `GenesisApi.concentration(level, x, z)` / `tierAt(...)` |
+| 某维度所在的星球 | `GenesisApi.planetOf(level)` |
+| 某方块的材质档案 | `GenesisApi.materialOf(block)` |
+| 把**自己的**方块/物品模板翻译成 Minecraft 属性 | `GenesisApi.blockProperties(template)` / `itemProperties(template)` |
+
+最后一条是 `sandbox` 这个探针逼出来的：模板在 `api` 层，但"模板 → Minecraft 属性"
+的翻译原先锁在 base 的 `mc` 层内部，兄弟模组拿不到。**新成员会暴露新的这种缺口，
+看到就补进 facade，别让兄弟模组去碰内部结构。**
 
 ### 魔法模型是设计中心
 
