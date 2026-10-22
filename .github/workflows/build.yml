@@ -43,6 +43,10 @@ jobs:
       - name: Persistence test
         run: ./gradlew :base:persistenceTest
 
+      # 材质自检：证明原版的每一个方块与物品都有材质。
+      - name: Material test
+        run: ./gradlew :base:materialTest
+
       # 探针的自检：证明一个兄弟模组只用 Genesis 的契约就能站住。
       - name: Sandbox self test
         run: ./gradlew :sandbox:selfTest
