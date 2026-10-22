@@ -60,7 +60,10 @@ function Invoke-GhApi {
     if ($LASTEXITCODE -ne 0) { throw "gh-api $Method $Path 失败，exit=$LASTEXITCODE" }
     $text = ($raw -join "`n")
     if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-    return ($text | ConvertFrom-Json)
+    # ⚠️ 必须用 -DateKind String：ConvertFrom-Json 默认会把日期字符串转成 DateTime 对象，
+    #    再拼回字符串时变成 "10/22/2026 08:08:14" 这种本地格式 —— 时区丢了，
+    #    重建出来的提交 SHA 就和远端对不上。
+    return ($text | ConvertFrom-Json -DateKind String)
 }
 
 # 本地有没有这个提交对象
@@ -73,6 +76,26 @@ function Test-HasCommit([string] $worktree, [string] $sha) {
 function Test-HasObject([string] $worktree, [string] $sha) {
     & git -C $worktree cat-file -e "$sha" 2>$null
     return ($LASTEXITCODE -eq 0)
+}
+
+# 用条目造一个树对象。
+# ⚠️ git mktree 从**标准输入**读条目，不是从文件参数读 ——
+#    把文件名当参数传进去，它会读到空的输入，于是造出一棵空树。
+function New-TreeObject([string] $worktree, [string[]] $lines) {
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = 'git'
+    $psi.Arguments = "-C `"$worktree`" mktree"
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $process = [System.Diagnostics.Process]::Start($psi)
+    $process.StandardInput.Write(($lines -join "`n") + "`n")
+    $process.StandardInput.Close()
+    $out = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) { throw "造树失败：$($process.StandardError.ReadToEnd())" }
+    return $out.Trim()
 }
 
 # 把远端的一棵树搬到本地来。
@@ -95,8 +118,8 @@ function Restore-Tree([string] $worktree, [string] $repoName, [string] $treeSha)
         & git -C $worktree hash-object -w $tmp | Out-Null
     }
 
-    # 再自底向上把缺的树对象补上（路径越浅的树越晚造）
-    $trees = @($listing.tree | Where-Object { $_.type -eq 'tree' } | Sort-Object { $_.path.Length })
+    # 再自底向上把子目录的树对象补上（路径越深的越先造）
+    $trees = @($listing.tree | Where-Object { $_.type -eq 'tree' } | Sort-Object { $_.path.Length } -Descending)
     foreach ($entry in $trees) {
         if (Test-HasObject $worktree $entry.sha) { continue }
         $prefix = $entry.path + '/'
@@ -110,10 +133,21 @@ function Restore-Tree([string] $worktree, [string] $repoName, [string] $treeSha)
         }
         $listingFile = Join-Path ([System.IO.Path]::GetTempPath()) ("tree-" + [guid]::NewGuid().ToString('N'))
         [System.IO.File]::WriteAllLines($listingFile, $lines)
-        $made = (& git -C $worktree mktree $listingFile).Trim()
+        $made = New-TreeObject $worktree $lines
         if ($made -ne $entry.sha) {
             throw "重建树 $($entry.sha) 失败：得到 $made"
         }
+    }
+
+    # 最后造这棵树本身 —— 递归列表里只有它的子项，不含它自己
+    $lines = @()
+    foreach ($child in $listing.tree) {
+        if ($child.path.Contains('/')) { continue }
+        $lines += "$($child.mode) $($child.type) $($child.sha)`t$($child.path)"
+    }
+    $made = New-TreeObject $worktree $lines
+    if ($made -ne $treeSha) {
+        throw "重建树 $treeSha 失败：得到 $made"
     }
     return $treeSha
 }
@@ -130,7 +164,9 @@ function Rebuild-Commit([string] $worktree, $commit, [string] $parent) {
     $env:GIT_COMMITTER_DATE = $commit.committer.date
 
     $messageFile = Join-Path ([System.IO.Path]::GetTempPath()) ("msg-" + [guid]::NewGuid().ToString('N'))
-    [System.IO.File]::WriteAllText($messageFile, $commit.message, (New-Object System.Text.UTF8Encoding($false)))
+    # ⚠️ API 报的 message 把结尾的换行去掉了，而提交里是有的 —— 得补回去，
+    #    否则重建出来的提交会差一个字节，SHA 自然对不上。
+    [System.IO.File]::WriteAllText($messageFile, ($commit.message + "`n"), (New-Object System.Text.UTF8Encoding($false)))
     $tree = Restore-Tree $worktree $repoName $commit.tree.sha
     $rebuilt = (& git -C $worktree commit-tree $tree -p $parent -F $messageFile).Trim()
     if ($rebuilt -ne $commit.sha) {
