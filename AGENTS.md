@@ -54,9 +54,45 @@ KevinT742MinecraftMod/           ← 装配层仓库（.git 在此）
 6. **新增成员时**：在 `settings.gradle` 加 `include '成员名'`，在根 `.gitignore` 加
    `/成员名/`，在 `members.lock` 加一条该成员的 ref。
 
+> **副作用提醒**：根 `.gitignore` 里的 `/base/` 会让遵守 gitignore 的检索工具
+> （ripgrep 等）默认**跳过整个 base 目录**。搜 base 里的东西时要显式给目录路径，
+> 不要以为"搜不到就是不存在"。
+
 ---
 
 ## 二、构建与验证约定
+
+### 桩件铁律：必须与真实 NeoForge 源码逐个签名对齐
+
+`verification/stubs/` 是**手写的最小桩件**，用来在够不到 `maven.neoforged.net` 的机器上
+编译 Minecraft 适配层。**桩件不是装饰，它必须和真实 NeoForge 的签名一模一样**——
+否则离线验证会给出**假绿**，等真编译时才炸。
+
+**踩过的坑（2026-10-22，真实事故）**：桩件最早是照着调用方的期望手写的，于是：
+
+| 桩件里写的 | 真实 NeoForge 26.2.x | 后果 |
+|---|---|---|
+| `registerSimpleBlock(String, Function<Properties,Properties>)` | `registerSimpleBlock(String, UnaryOperator<Properties>)` | 传不进去（`UnaryOperator` 是 `Function` 的**子接口**，反过来不成立） |
+| `registerSimpleItem(String, Consumer<Item.Properties>)` | `registerSimpleItem(String, UnaryOperator<Item.Properties>)` | 同上 |
+| `net.neoforged.neoforge.event.entity.PlayerEvent` | `net.neoforged.neoforge.event.entity.**player**.PlayerEvent` | 包路径错 |
+| `PlayerEvent.PlayerTick`（捏造的） | 不存在；真实的是 `net.neoforged.neoforge.event.tick.PlayerTickEvent`（抽象类，含 `Pre`/`Post`） | 类不存在 |
+| `PlayerEvent.getEntity()` 返回 `ServerPlayer` | 返回 `Player` | 需要自己 `instanceof` 一次 |
+
+结果是：**离线验证 99 项全绿，但对真实 NeoForge 的 CI 编译炸了 13 个错误**。
+`core` 层的算法是真的被验证过的；`mc` 适配层此前**从未对真实 NeoForge 编译过**。
+
+**因此**：
+
+1. 桩件的**生成器是 `verification/gen-stubs.ps1`**，不是 `stubs/` 目录下的文件——
+   它会先清空整个 `stubs/` 再重新生成。改桩件必须改**生成器**，否则下次运行就被冲掉。
+2. 动桩件之前先去核对真实源码：
+   <https://github.com/neoforged/NeoForge> → `src/main/java/net/neoforged/neoforge/`
+   本工程当前对齐的分支是 **`26.2.x`**（对应 NeoForge 26.2.0.93）。
+   本机够不到 `maven.neoforged.net`，但 GitHub 可以，用 API 读文件即可。
+3. **Minecraft 侧的签名不用猜**：本地 `verification/work/mc-classes` 是真实的 MC 26.2 类，
+   用 `javap -cp verification/work/mc-classes <全限定类名>` 直接查。
+4. 桩件只能证明**签名**对不对，证明不了**行为**对不对。桩件绿 ≠ 模组能跑，
+   真正的闸门仍然是 CI 上对真实 NeoForge 的编译 + 自检。
 
 ### 不要拿 `./gradlew build` 当验证手段
 

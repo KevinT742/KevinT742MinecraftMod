@@ -1,4 +1,26 @@
 $ErrorActionPreference = 'Stop'
+
+# ============================================================================
+# 生成 NeoForge API 的最小桩件（不进产物，只用于离线编译校验）
+# ============================================================================
+# ⚠️ 铁律：桩件必须与**真实 NeoForge 源码逐个签名对齐**，不能照着调用方的期望手写。
+#
+#    踩过的坑（2026-10-22）：早期这里把 DeferredRegister 的注册方法写成
+#    registerSimpleBlock(String, Function<Properties,Properties>) 和
+#    registerSimpleItem(String, Consumer<Item.Properties>)，还凭空捏造了
+#    net.neoforged.neoforge.event.entity.PlayerEvent.PlayerTick。
+#    真实 API 里这些都不存在 —— properties 重载的参数类型是 UnaryOperator
+#    （它是 Function 的**子接口**，反过来不成立），玩家 tick 事件是
+#    net.neoforged.neoforge.event.tick.PlayerTickEvent，PlayerEvent 在
+#    net.neoforged.neoforge.event.entity.**player** 包下，且 getEntity() 返回 Player。
+#
+#    结果：离线验证一直是绿的，真编译（对真实 NeoForge）才炸。
+#
+#    改本文件前，先去 neoforged/NeoForge 对应分支核对真实签名：
+#        https://github.com/neoforged/NeoForge  →  src/main/java/net/neoforged/neoforge/
+#    本工程当前对齐的分支：**26.2.x**（对应 NeoForge 26.2.0.93）。
+# ============================================================================
+
 $root = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'stubs'
 if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
 
@@ -143,10 +165,12 @@ public class DeferredItem<T extends Item> extends DeferredHolder<Item, T> {
 }
 '@
 'net/neoforged/neoforge/registries/DeferredRegister.java' = @'
+// 桩件：签名对照 NeoForge 26.2.x 的 DeferredRegister.java，勿凭印象修改。
 package net.neoforged.neoforge.registries;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.BlockItem;
@@ -157,18 +181,26 @@ public class DeferredRegister<T> {
     public static <T> DeferredRegister<T> create(ResourceKey<? extends Registry<T>> key, String modid) { return null; }
     public static Blocks createBlocks(String modid) { return null; }
     public static Items createItems(String modid) { return null; }
-    public DeferredHolder<T, T> register(String name, Supplier<? extends T> supplier) { return null; }
+    public <I extends T> DeferredHolder<T, I> register(String name, Supplier<? extends I> supplier) { return null; }
     public void register(net.neoforged.bus.api.IEventBus bus) {}
 
     public static class Blocks {
         public void register(net.neoforged.bus.api.IEventBus bus) {}
-        public DeferredBlock<Block> registerSimpleBlock(String name, Function<BlockBehaviour.Properties, BlockBehaviour.Properties> properties) { return null; }
-        public DeferredBlock<Block> registerSimpleBlock(String name, Block block) { return null; }
+        public <B extends Block> DeferredBlock<B> register(String name, Supplier<? extends B> sup) { return null; }
+        public <B extends Block> DeferredBlock<B> registerBlock(String name, Function<BlockBehaviour.Properties, ? extends B> func) { return null; }
+        public DeferredBlock<Block> registerSimpleBlock(String name, Supplier<BlockBehaviour.Properties> properties) { return null; }
+        public DeferredBlock<Block> registerSimpleBlock(String name, UnaryOperator<BlockBehaviour.Properties> properties) { return null; }
+        public DeferredBlock<Block> registerSimpleBlock(String name) { return null; }
     }
     public static class Items {
         public void register(net.neoforged.bus.api.IEventBus bus) {}
-        public DeferredItem<BlockItem> registerSimpleBlockItem(String name, DeferredHolder<Block, ? extends Block> block) { return null; }
-        public DeferredItem<Item> registerSimpleItem(String name, Consumer<Item.Properties> properties) { return null; }
+        public <I extends Item> DeferredItem<I> register(String name, Supplier<? extends I> sup) { return null; }
+        public <I extends Item> DeferredItem<I> registerItem(String name, Function<Item.Properties, ? extends I> func) { return null; }
+        public DeferredItem<BlockItem> registerSimpleBlockItem(String name, Supplier<? extends Block> block) { return null; }
+        public DeferredItem<BlockItem> registerSimpleBlockItem(Holder<Block> block) { return null; }
+        public DeferredItem<Item> registerSimpleItem(String name, Supplier<Item.Properties> properties) { return null; }
+        public DeferredItem<Item> registerSimpleItem(String name, UnaryOperator<Item.Properties> properties) { return null; }
+        public DeferredItem<Item> registerSimpleItem(String name) { return null; }
     }
 }
 '@
@@ -202,15 +234,35 @@ public class ServerStoppingEvent implements Event {
     public MinecraftServer getServer() { return null; }
 }
 '@
-'net/neoforged/neoforge/event/entity/PlayerEvent.java' = @'
-package net.neoforged.neoforge.event.entity;
-import net.minecraft.server.level.ServerPlayer;
+'net/neoforged/neoforge/event/entity/player/PlayerEvent.java' = @'
+// 桩件：签名对照 NeoForge 26.2.x 的 event/entity/player/PlayerEvent.java，勿凭印象修改。
+package net.neoforged.neoforge.event.entity.player;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.Event;
-public class PlayerEvent implements Event {
-    public ServerPlayer getEntity() { return null; }
-    public static class PlayerTick extends PlayerEvent {
+public abstract class PlayerEvent implements Event {
+    protected PlayerEvent(Player player) {
     }
-    public static class PlayerLoggedIn extends PlayerEvent {
+    public Player getEntity() { return null; }
+    public static class PlayerLoggedInEvent extends PlayerEvent {
+        public PlayerLoggedInEvent(Player player) { super(player); }
+    }
+    public static class PlayerLoggedOutEvent extends PlayerEvent {
+        public PlayerLoggedOutEvent(Player player) { super(player); }
+    }
+}
+'@
+'net/neoforged/neoforge/event/tick/PlayerTickEvent.java' = @'
+// 桩件：签名对照 NeoForge 26.2.x 的 event/tick/PlayerTickEvent.java，勿凭印象修改。
+package net.neoforged.neoforge.event.tick;
+import net.minecraft.world.entity.player.Player;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+public abstract class PlayerTickEvent extends PlayerEvent {
+    protected PlayerTickEvent(Player player) { super(player); }
+    public static class Pre extends PlayerTickEvent {
+        public Pre(Player player) { super(player); }
+    }
+    public static class Post extends PlayerTickEvent {
+        public Post(Player player) { super(player); }
     }
 }
 '@
