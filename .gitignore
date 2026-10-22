@@ -50,3 +50,6 @@ verification/work/
 
 ### 工具产生的日志 ###
 verification/logs/
+
+### 游戏与工具产生的日志 ###
+logs/
