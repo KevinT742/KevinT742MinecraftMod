@@ -1,0 +1,47 @@
+// ============================================================================
+// KevinT742MinecraftMod —— 模组家族根工程（母文件夹）
+//
+// 这个文件不产出任何 jar，它只负责：
+//   1. 统一声明所有家族成员共用的 Gradle 插件版本；
+//   2. 统一 Java 工具链与源码编码等家族约定；
+//   3. 作为所有子工程（家族成员）的父工程。
+//
+// 新增一个家族成员：在根目录 settings.gradle 里 include '新成员名'，
+// 然后在 新成员名/ 下放一份独立的 build.gradle 与 gradle.properties。
+// ============================================================================
+
+plugins {
+    // 外部插件的版本在这里统一定义；子工程用 plugins { id 'xxx' } 引用时不再写版本号，
+    // 保证全家族插件版本一致。
+    //
+    // 注意：核心插件（java-library / maven-publish / idea）在每个工程里本来就在 classpath 上，
+    // 写 apply false 会被 Gradle 9 直接判为错误，所以这里只声明需要版本管理的外部插件。
+    id 'net.neoforged.moddev' version '2.0.148' apply false
+    id 'idea'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    // Define wrapper values here so as to not have to always do so when updating gradlew.properties.
+    // Switching this to Wrapper.DistributionType.ALL will download the full gradle sources that comes with
+    // documentation attached on cursor hover of gradle classes and methods. However, this comes with increased
+    // file size for Gradle. If you do switch to ALL, run the Gradle wrapper task twice afterwards.
+    // (Verify by checking gradle/wrapper/gradle-wrapper.properties to see if distributionUrl now points to `-all`)
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+// ---------------------------------------------------------------------------
+// 家族共享约定
+// 所有成员模组使用同一套 Java 工具链与源码编码，避免多模组并装时的版本漂移。
+// ---------------------------------------------------------------------------
+subprojects {
+    plugins.withId('java') {
+        java {
+            // Mojang ships Java 25 to end users in 26.2, so mods should target Java 25.
+            toolchain.languageVersion = JavaLanguageVersion.of(25)
+        }
+
+        tasks.withType(JavaCompile).configureEach {
+            options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+        }
+    }
+}

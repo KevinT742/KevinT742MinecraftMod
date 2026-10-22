@@ -1,0 +1,27 @@
+# ============================================================================
+# 行尾规则
+# ============================================================================
+# 本机 Git 的 core.autocrlf 是**系统级** true（见 F:/DevEnv/Git/etc/gitconfig），
+# 不显式约束的话，任何一次 checkout 都会把工作区的文本文件转成 CRLF。
+#
+# 对 shell 脚本这是致命的：#!/usr/bin/env bash\r 会让脚本直接无法执行。
+# 所以这里把文本文件统一钉在 LF，只有 Windows 批处理例外。
+#
+# 注意：根仓库的规则管不到成员仓库（成员是独立仓库，各自带一份 .gitattributes）。
+# ============================================================================
+
+* text=auto eol=lf
+
+# Windows 批处理需要 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 禁用 autocrlf on generated files, they always generate with LF
+src/generated/**/.cache/* text eol=lf
+src/generated/**/*.json text eol=lf
+
+# 二进制
+*.jar binary
+*.png binary
+*.zip binary
+*.class binary

@@ -1,0 +1,27 @@
+// ============================================================================
+// KevinT742MinecraftMod —— 模组家族根设置
+//
+// 母文件夹即家族根工程：每个自设计模组都是它的一个子工程（家族成员）。
+// ---------------------------------------------------------------------------
+//   base/   → Genesis，家族的地基：材质模板 / 星球世界生成 / 结构体系
+//   <成员>/ → 其余家族成员，各自独立打包、独立发布
+// ---------------------------------------------------------------------------
+// ============================================================================
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        // 若 maven.neoforged.net 不可达（国内常见），在这里加入镜像：
+        // maven { url = 'https://你的镜像/maven.neoforged.net/releases/' }
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'kevint742-minecraft-mod'
+
+// 家族成员清单：新增模组时在此登记，并在对应目录放置子工程
+include 'base'
