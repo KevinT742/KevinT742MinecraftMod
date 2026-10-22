@@ -164,7 +164,7 @@ foreach ($member in $targets) {
     #     不能用 `git diff 远端..本地`：远端那个提交是 API 造的，本地根本没有它，
     #     diff 会失败，而失败会被当成"没有差异"，于是静默漏推。
     #     所以改成把两边的树都列出来，逐个路径比 blob。
-    $remoteTree = Invoke-GhApi -Method GET -Path "/repos/$Owner/$repoName/git/trees/$baseTree?recursive=1"
+    $remoteTree = Invoke-GhApi -Method GET -Path "/repos/$Owner/$repoName/git/trees/$($baseTree)?recursive=1"
     $remoteBlobs = @{}
     foreach ($entry in $remoteTree.tree) {
         if ($entry.type -eq 'blob') { $remoteBlobs[$entry.path] = $entry.sha }
