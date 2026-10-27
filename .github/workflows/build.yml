@@ -47,6 +47,10 @@ jobs:
       - name: Sandbox self test
         run: ./gradlew :sandbox:selfTest
 
+      # 奥术的自检：证明仪式的规则不依赖游戏。
+      - name: Arcana self test
+        run: ./gradlew :arcana:selfTest
+
       # 离线验证：真实 Minecraft + 桩件，跑完全部自检（含材质自检）。
       # 材质自检要遍历游戏的注册表，而注册表在游戏启动之前是不可用的 ——
       # 真实 NeoForge 在类路径上时，连 SharedConstants 的静态初始化都要向模组加载器要东西，

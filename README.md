@@ -44,6 +44,16 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
         ├── java/sandbox/
         ├── resources/
         └── templates/
+│
+└── arcana/                     ← ★ 家族成员③：Arcana（奥术）
+    │                           ←   ★ 独立 git 仓库（arcana/.git）
+    ├── build.gradle            ←   依赖 base 的成员
+    ├── gradle.properties       ←   该成员自己的属性
+    ├── README.md               ←   该成员的详细文档
+    └── src/main/
+        ├── java/arcana/
+        ├── resources/
+        └── templates/
 ```
 
 ### 仓库结构：装配层 + 独立成员
@@ -77,6 +87,7 @@ KevinT742MinecraftMod/          ← 母文件夹 = 家族根工程 = ★ 装配�
 |---|---|---|---|
 | `base/` | [Genesis](base/README.md) | `genesis` | **地基**：统一材质模板（物理/化学/魔法）、物品注册信息、魔法模型（游离魔力·浓度场·器官·材料·引导方式）、真实世界生成、结构体系、多星球架构 |
 | `sandbox/` | [Sandbox](sandbox/README.md) | `sandbox` | **探针**：最小的兄弟模组，只靠 `implementation project(':base')` 就能用上 Genesis 的契约。它证明"再开一个模组真的只是照抄一个目录的事" |
+| `arcana/` | [Arcana](arcana/README.md) | `arcana` | **奥术**：把 Genesis 的游离魔力变成可以用得上的东西——奥术祭坛（抽取/灌注地面的魔力）、奥术透镜、魔药瓶。因为魔力是存下来的，祭坛对一片地做过的事一直算数 |
 
 `base` 对外提供 `api/`（稳定扩展面）与 `core/`（纯算法层）两套契约，家族成员可以直接依赖。
 进入基地能力的统一入口是 `genesis.mc.GenesisApi`：

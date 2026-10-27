@@ -47,6 +47,7 @@ verification/work/
 # 新增成员时在此追加一行：/成员名/
 /base/
 /sandbox/
+/arcana/
 
 ### 工具产生的日志 ###
 verification/logs/
