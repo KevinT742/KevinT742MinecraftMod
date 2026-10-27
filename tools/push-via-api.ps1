@@ -85,6 +85,16 @@ function Invoke-GhApi {
     return ($text | ConvertFrom-Json)
 }
 
+# 一次请求，拿不到就返回空（不抛错）——用来问"远端有没有这个分支"。
+function Invoke-GhApiOptional {
+    param([string] $Method, [string] $Path)
+    try {
+        return Invoke-GhApi -Method $Method -Path $Path
+    } catch {
+        return $null
+    }
+}
+
 # 把提交里的一个 blob 按字节取出来。走 .NET 的原始流，不能经过 PowerShell 的
 # 文本管道 —— 那会把 LF 重新折成 CRLF，取到的就不是提交里的内容了。
 function Get-BlobBytes([string] $repo, [string] $sha, [string] $outFile) {
@@ -146,8 +156,28 @@ foreach ($member in $targets) {
     $repoName = ($remoteUrl -replace '\.git$', '') -split '/' | Select-Object -Last 1
 
     $headSha = (git -C $worktree rev-parse HEAD).Trim()
-    $ref = Invoke-GhApi -Method GET -Path "/repos/$Owner/$repoName/git/ref/heads/main"
-    $remoteSha = $ref.object.sha
+    # 新建的仓库还没有 main 分支，这时远端是空的，所有文件都是新增。
+    $ref = Invoke-GhApiOptional -Method GET -Path "/repos/$Owner/$repoName/git/ref/heads/main"
+    $remoteSha = if ($null -eq $ref) { $null } else { $ref.object.sha }
+
+    # ⚠️ 空仓库有个坎：GitHub 不允许在**空仓库**里创建 blob（409 Git Repository is empty）。
+    #    所以先用 Contents API 放一个文件进去，仓库就不空了，后面的 blob/tree/commit 才走得通。
+    if ($null -eq $remoteSha) {
+        $first = @((git -C $worktree ls-tree -r --name-only $headSha) | Sort-Object)[0]
+        $seedSha = (git -C $worktree rev-parse "$headSha`:$first").Trim()
+        $seedFile = Join-Path ([System.IO.Path]::GetTempPath()) ("seed-" + [guid]::NewGuid().ToString('N'))
+        Get-BlobBytes $worktree $seedSha $seedFile
+        $seedBytes = [System.IO.File]::ReadAllBytes($seedFile)
+        Write-Host "   空仓库：先用 $first 把它填上"
+        Invoke-GhApi -Method PUT -Path "/repos/$Owner/$repoName/contents/$first" -Body @{
+            message = '初始化仓库'
+            content = [Convert]::ToBase64String($seedBytes)
+            branch = 'main'
+        } | Out-Null
+        $ref = Invoke-GhApi -Method GET -Path "/repos/$Owner/$repoName/git/ref/heads/main"
+        $remoteSha = $ref.object.sha
+    }
+
     if ($remoteSha -eq $headSha) {
         Write-Host "$repoName：远端已是最新（$($headSha.Substring(0,7))），跳过"
         continue
@@ -221,29 +251,35 @@ foreach ($member in $targets) {
         $treeEntries += @{ path = $change.Path; mode = '100644'; type = 'blob'; sha = $blob.sha }
     }
 
-    # 2.4 造树
-    $tree = Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/trees" -Body @{
-        base_tree = $baseTree
-        tree = $treeEntries
-    }
+    # 2.4 造树（空仓库没有基线树，就整棵造出来）
+    $treeBody = @{ tree = $treeEntries }
+    if ($null -ne $baseTree) { $treeBody.base_tree = $baseTree }
+    $tree = Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/trees" -Body $treeBody
 
-    # 2.5 造提交
+    # 2.5 造提交（空仓库的第一个提交没有父提交）
     $commitMessage = if ($Message) { $Message } else { (git -C $worktree log -1 --format=%B $headSha) -join "`n" }
     $identity = @{ name = 'KevinT742'; email = 'dtj126126@126.com'; date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
-    $commit = Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/commits" -Body @{
+    $commitBody = @{
         message = $commitMessage
         tree = $tree.sha
-        parents = @($remoteSha)
         author = $identity
         committer = $identity
     }
+    if ($null -ne $remoteSha) { $commitBody.parents = @($remoteSha) }
+    $commit = Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/commits" -Body $commitBody
 
     # 2.6 推进分支
-    Invoke-GhApi -Method PATCH -Path "/repos/$Owner/$repoName/git/refs/heads/main" -Body @{
-        sha = $commit.sha
-        force = $false
-    } | Out-Null
+    $refBody = @{ sha = $commit.sha; force = $false }
+    if ($null -eq $remoteSha) {
+        # 分支还不存在，先建出来
+        Invoke-GhApi -Method POST -Path "/repos/$Owner/$repoName/git/refs" -Body @{
+            ref = 'refs/heads/main'
+            sha = $commit.sha
+        } | Out-Null
+    } else {
+        Invoke-GhApi -Method PATCH -Path "/repos/$Owner/$repoName/git/refs/heads/main" -Body $refBody | Out-Null
+    }
 
     Write-Host "   已推送：$($commit.sha)  ->  https://github.com/$Owner/$repoName/commit/$($commit.sha)"
-    Write-Host "   本地需要对齐远端：git -C $worktree fetch origin && git -C $worktree reset --hard origin/main"
+    Write-Host "   本地对齐远端：pwsh -File tools\align-with-remote.ps1"
 }

@@ -14,7 +14,7 @@
 
 ```
 KevinT742MinecraftMod/           ← 装配层仓库（.git 在此）
-├── settings.gradle               ← 成员清单：include 'base' 'sandbox'
+├── settings.gradle               ← 成员清单：include 'base' 'sandbox' 'arcana'
 ├── build.gradle                  ← 共享插件版本 + 家族约定（Java 工具链 / 编码）
 ├── gradle.properties             ← 共享版本：minecraft_version / neo_version
 ├── gradlew / gradlew.bat / gradle/
@@ -27,8 +27,13 @@ KevinT742MinecraftMod/           ← 装配层仓库（.git 在此）
 │   ├── gradle.properties
 │   └── src/
 │
-└── sandbox/                      ← ★ 独立仓库（sandbox/.git）：探针
-    ├── build.gradle              ←   依赖 base 的最小成员
+├── sandbox/                      ← ★ 独立仓库（sandbox/.git）：探针
+│   ├── build.gradle              ←   依赖 base 的最小成员
+│   ├── gradle.properties
+│   └── src/
+│
+└── arcana/                       ← ★ 独立仓库（arcana/.git）：奥术
+    ├── build.gradle              ←   依赖 base 的成员
     ├── gradle.properties
     └── src/
 ```
