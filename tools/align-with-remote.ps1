@@ -168,7 +168,12 @@ function Rebuild-Commit([string] $worktree, $commit, [string] $parent) {
     #    否则重建出来的提交会差一个字节，SHA 自然对不上。
     [System.IO.File]::WriteAllText($messageFile, ($commit.message + "`n"), (New-Object System.Text.UTF8Encoding($false)))
     $tree = Restore-Tree $worktree $repoName $commit.tree.sha
-    $rebuilt = (& git -C $worktree commit-tree $tree -p $parent -F $messageFile).Trim()
+    # 链首的那个提交没有父提交，这时不能带 -p。
+    if ([string]::IsNullOrWhiteSpace($parent)) {
+        $rebuilt = (& git -C $worktree commit-tree $tree -F $messageFile).Trim()
+    } else {
+        $rebuilt = (& git -C $worktree commit-tree $tree -p $parent -F $messageFile).Trim()
+    }
     if ($rebuilt -ne $commit.sha) {
         throw "重建出来的提交是 $rebuilt，与远端的 $($commit.sha) 不同"
     }
